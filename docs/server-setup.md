@@ -76,3 +76,15 @@ sudo openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
 
 - Доверие на хостовой системе: `scp devops:/etc/ssl/certs/devops.crt ~/devops.crt`, затем `curl --cacert ~/devops.crt -I https://devops.local`.
 - Снимок состояния: 04-nginx-https (создан после перевода ресурса на HTTPS).
+
+## 9. Контейнеризация
+
+- Docker Engine 29.9.2 и плагин Compose v5.6.1 установлены из официального репозитория Docker (https://download.docker.com/linux/ubuntu, ключ /etc/apt/keyrings/docker.asc, список /etc/apt/sources.list.d/docker.list), пакеты `docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin`. Пакет docker.io из репозитория Ubuntu не используется.
+- Группа docker: участник devops (`sudo usermod -aG docker devops`, затем новая SSH-сессия). Участник группы фактически имеет права root, поэтому в группу включаются только учётные записи с правом sudo.
+- Проект расположен в /home/devops/app. Исходный код доставляется с хостовой системы командой `rsync -avz --delete --exclude=.env app/ devops:app/` (параметр `--exclude=.env` обязателен: иначе `--delete` удалит файл с секретами). Образ собирается командой `docker compose up -d --build` и получает имя devops-app:1.0. Приложение запускается от имени пользователя app (не root).
+- Файл /home/devops/app/.env создаётся только на сервере, права 600, владелец devops: `cp .env.example .env`, `chmod 600 .env`, `sed -i "s/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=$(openssl rand -hex 16)/" .env`. Шаблон .env.example (POSTGRES_DB=app, POSTGRES_USER=app, POSTGRES_PASSWORD=change_me, DB_HOST=db) хранится в репозитории, сам .env внесён в .gitignore и .dockerignore.
+- Публикуемые порты: приложение `127.0.0.1:5000:5000` (только петля), порт СУБД 5432 не публикуется, приложение обращается к ней по имени сервиса db внутри сети app_backend.
+- Именованный том: db_data (на сервере app_db_data), каталог данных PostgreSQL /var/lib/postgresql/data. Команда `docker compose down` данные сохраняет, `docker compose down -v` удаляет.
+- СУБД: образ postgres:16-alpine, проверка готовности `pg_isready`, сервис app стартует после состояния healthy (`depends_on` с `condition: service_healthy`), политика `restart: unless-stopped`.
+- Обратный прокси-сервер: в HTTPS-блок /etc/nginx/sites-available/devops-site добавлено расположение `location /app/ { proxy_pass http://127.0.0.1:5000/; proxy_set_header Host $host; proxy_set_header X-Real-IP $remote_addr; proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for; proxy_set_header X-Forwarded-Proto $scheme; }`. Завершающий символ / в proxy_pass заменяет префикс /app/ на /. Статический ресурс по пути / сохранён.
+- Снимок состояния: 05-docker-compose.
