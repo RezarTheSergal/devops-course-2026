@@ -21,5 +21,11 @@ check "Межсетевой экран активен" "active" "$(sudo ufw stat
 check "Политика по умолчанию для входящего трафика: deny" "deny" "$(sudo ufw status verbose | awk '/^Default:/{gsub(",","",$2); print $2}')"
 echo "[3] Учётные записи"
 awk -F: '$3>=1000 && $3<65534 {printf "    %s (uid=%s)\n",$1,$3}' /etc/passwd
+echo "[4] Веб-сервер"
+CERT_DAYS="${CERT_DAYS:-30}"
+check "Служба nginx активна" "active" "$(systemctl is-active nginx)"
+check "Конфигурация nginx корректна" "0" "$(sudo nginx -t >/dev/null 2>&1; echo $?)"
+check "Сертификат devops.crt действует ещё ${CERT_DAYS} дней" "0" "$(openssl x509 -checkend $((CERT_DAYS * 86400)) -noout -in /etc/ssl/certs/devops.crt >/dev/null 2>&1; echo $?)"
+check "Нет файлов с правом записи для всех, ключ имеет права 600" "0:600" "$(find /var/www/devops-site -perm -o+w | wc -l):$(sudo stat -c '%a' /etc/ssl/private/devops.key)"
 echo "Пройдено: $PASS, не пройдено: $FAIL"
 [[ $FAIL -eq 0 ]] && exit 0 || exit 1

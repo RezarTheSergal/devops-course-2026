@@ -54,3 +54,25 @@ sudo ufw enable
 - 01-clean-install: чистая установка Ubuntu Server 24.04 с OpenSSH, система обновлена (создан до всех настроек).
 - 02-keys-configured: создана учётная запись devops, настроен вход по ключу и файл ~/.ssh/config.
 - 03-ssh-hardened: применён 99-hardening.conf, порт 2222, проброс портов изменён на 2222. Снимки создаются на выключенной машине.
+
+## 8. Веб-сервер
+
+- Пакеты: `sudo apt install -y nginx rsync` (nginx 1.24.0 из репозитория Ubuntu 24.04). Порты 80 и 443 уже разрешены правилами из раздела 6, профиль `Nginx Full` не нужен.
+- Конфигурация ресурса: /etc/nginx/sites-available/devops-site, активируется ссылкой `sudo ln -s /etc/nginx/sites-available/devops-site /etc/nginx/sites-enabled/`. Стандартный ресурс отключён удалением ссылки: `sudo rm /etc/nginx/sites-enabled/default`.
+- Содержимое devops-site: блок server на портах 80 и [::]:80 с server_name devops.local и `return 301 https://$host$request_uri;`; блок server на портах 443 и [::]:443 с `ssl`, server_name devops.local, `ssl_certificate /etc/ssl/certs/devops.crt`, `ssl_certificate_key /etc/ssl/private/devops.key`, `ssl_protocols TLSv1.2 TLSv1.3`, `root /var/www/devops-site`, `index index.html`, `location / { try_files $uri $uri/ =404; }`, `error_page 404 /404.html`, журналы /var/log/nginx/devops-site.access.log и /var/log/nginx/devops-site.error.log. Заголовок HSTS не добавляется.
+- Применение изменений: `sudo nginx -t && sudo systemctl reload nginx` (не restart).
+- Каталог ресурса: /var/www/devops-site, создан командами `sudo mkdir -p /var/www/devops-site` и `sudo chown -R devops:devops /var/www/devops-site`. Владелец devops, права каталога 755, файлов 644. Файлов с правом записи для всех быть не должно (`find /var/www/devops-site -perm -o+w` выводит пусто).
+- Доставка содержимого: с хостовой системы `scripts/deploy.sh` (rsync с параметрами `-avz --delete --chmod=D755,F644`, исходный каталог site/ репозитория).
+- Сертификат и ключ: /etc/ssl/certs/devops.crt (права 644, владелец root) и /etc/ssl/private/devops.key (права 600, владелец root). Ключ читает только главный процесс nginx, запущенный от root, рабочие процессы www-data его не читают и из каталога /etc/ssl/private ключ не копируется.
+- Команда формирования, срок действия 365 дней, поле SAN обязательно:
+
+```
+sudo openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+  -keyout /etc/ssl/private/devops.key \
+  -out /etc/ssl/certs/devops.crt \
+  -subj "/CN=devops.local" \
+  -addext "subjectAltName=DNS:devops.local"
+```
+
+- Доверие на хостовой системе: `scp devops:/etc/ssl/certs/devops.crt ~/devops.crt`, затем `curl --cacert ~/devops.crt -I https://devops.local`.
+- Снимок состояния: 04-nginx-https (создан после перевода ресурса на HTTPS).
