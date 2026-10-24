@@ -32,5 +32,11 @@ check "Служба docker активна" "active" "$(systemctl is-active docke
 check "Контейнер СУБД в состоянии healthy" "healthy" "$(docker inspect -f '{{.State.Health.Status}}' app-db-1 2>/dev/null)"
 check "Порты 5000 и 5432 слушаются только на 127.0.0.1" "0" "$(ss -tln | awk '$4 ~ /:(5000|5432)$/ && $4 !~ /^127\.0\.0\.1:/' | wc -l)"
 check "Права файла ~/app/.env равны 600" "600" "$(stat -c '%a' ~/app/.env)"
+echo "[6] Контрольная работа № 2"
+check "Контейнер redis в состоянии healthy" "healthy" "$(docker inspect -f '{{.State.Health.Status}}' "$(docker compose --project-directory ~/kr2 ps -q redis)" 2>/dev/null)"
+check "Порт 8003 опубликован только на 127.0.0.1" "127.0.0.1:8003" "$(docker compose --project-directory ~/kr2 port app 8003 2>/dev/null)"
+check "Права файла ~/kr2/.env равны 600" "600" "$(stat -c '%a' ~/kr2/.env)"
+check "Сертификат kr2.crt действует ещё 30 дней" "0" "$(openssl x509 -checkend 2592000 -noout -in /etc/ssl/certs/kr2.crt >/dev/null 2>&1; echo $?)"
+check "Ресурс kr2 активирован в sites-enabled" "yes" "$([[ -L /etc/nginx/sites-enabled/kr2 ]] && echo yes || echo no)"
 echo "Пройдено: $PASS, не пройдено: $FAIL"
 [[ $FAIL -eq 0 ]] && exit 0 || exit 1
