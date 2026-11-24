@@ -1,0 +1,6 @@
+---
+app_image: ghcr.io/rezarthesergal/devops-ci-app
+app_tag: c39e5f2cd5d813aabd1083b7896fb91950298750
+app_container_name: devops-ci-app
+app_host_port: 15010
+app_internal_port: 5000

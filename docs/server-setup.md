@@ -88,3 +88,13 @@ sudo openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
 - СУБД: образ postgres:16-alpine, проверка готовности `pg_isready`, сервис app стартует после состояния healthy (`depends_on` с `condition: service_healthy`), политика `restart: unless-stopped`.
 - Обратный прокси-сервер: в HTTPS-блок /etc/nginx/sites-available/devops-site добавлено расположение `location /app/ { proxy_pass http://127.0.0.1:5000/; proxy_set_header Host $host; proxy_set_header X-Real-IP $remote_addr; proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for; proxy_set_header X-Forwarded-Proto $scheme; }`. Завершающий символ / в proxy_pass заменяет префикс /app/ на /. Статический ресурс по пути / сохранён.
 - Снимок состояния: 05-docker-compose.
+
+## 10. Ansible
+
+- Управляющий узел — Ubuntu в WSL; проект необходимо запускать из файловой системы WSL, например `~/devops-lab11/ansible`, чтобы Ansible прочитал локальный `ansible.cfg`.
+- Управляемый узел — `devops-vm`, Host-only `192.168.56.101:2222`, учётная запись `devops`, ключ `~/.ssh/devops_vm`. Снимок `05-docker-compose` уже содержит защищённый SSH, поэтому bootstrap здесь выполняется по ключу с запросом sudo-пароля, а не с чистой учётной записи `student`. Исходное состояние перед экспериментом сохранено отдельным снимком `09-before-pr10-11`.
+- Роли: `base` устанавливает зависимости и Docker, `ssh` проверяет защищённые параметры и настраивает доступ автоматизации, `nginx` настраивает reverse proxy, `app` загружает и запускает образ. `force_handlers` обеспечивает выполнение уведомлённых обработчиков при последующей ошибке.
+- Учебный sudo-файл даёт `devops` полный доступ без пароля. Применять эту настройку допустимо только на изолированном лабораторном стенде; доступ к ключу эквивалентен административному.
+- Образ `ghcr.io/rezarthesergal/devops-ci-app`, исходный SHA `c39e5f2cd5d813aabd1083b7896fb91950298750`; переменная `app_tag` может переопределяться для деплоя. Контейнер опубликован только на `127.0.0.1:15010`, чтобы не занимать порт существующего Compose-приложения 5000. Nginx принимает запросы на порту 80; проверка: `curl -f http://192.168.56.101/health`.
+- В рамках изолированного эксперимента ссылка `sites-enabled/devops-site` отключается, а вместо неё включается `devops-ci-app`; исходные файлы и контейнеры предыдущего приложения сохраняются. Для возврата исходного состояния используется сохранённый снимок VM.
+- Установка коллекций: `ansible-galaxy collection install -r requirements.yml`. Первый запуск: `ansible-playbook -i inventory/bootstrap.ini site.yml --ask-become-pass`. Последующий запуск: `ansible-playbook site.yml`. Аудит без изменения конфигурации: `ansible-playbook verify.yml`.
