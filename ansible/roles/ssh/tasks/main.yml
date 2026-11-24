@@ -1,0 +1,35 @@
+---
+- name: Create automation user
+  ansible.builtin.user:
+    name: devops
+    shell: /bin/bash
+    groups: sudo
+    append: true
+    create_home: true
+- name: Install automation public key
+  ansible.posix.authorized_key:
+    user: devops
+    state: present
+    key: "{{ lookup('file', lookup('env', 'HOME') + '/.ssh/devops_vm.pub') }}"
+- name: Allow non-interactive automation sudo
+  ansible.builtin.copy:
+    content: "devops ALL=(ALL) NOPASSWD:ALL\n"
+    dest: /etc/sudoers.d/devops
+    owner: root
+    group: root
+    mode: '0440'
+    validate: 'visudo -cf %s'
+- name: Verify effective SSH security settings
+  ansible.builtin.command: sshd -T
+  register: sshd_settings
+  changed_when: false
+- name: Assert existing SSH key-only access
+  ansible.builtin.assert:
+    that:
+      - "'passwordauthentication no' in sshd_settings.stdout"
+      - "'permitrootlogin no' in sshd_settings.stdout"
+- name: Allow reverse proxy port
+  community.general.ufw:
+    rule: allow
+    port: '80'
+    proto: tcp
